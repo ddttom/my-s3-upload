@@ -1,16 +1,11 @@
-
 require('dotenv').config();
 const http = require("http");
 const path = require("path");
+const fs = require('fs');
 const { Buffer } = require("buffer");
 const { S3Client } = require("@aws-sdk/client-s3");
 const { Upload } = require("@aws-sdk/lib-storage");
 const { PassThrough } = require("stream");
-
-const heimdall = require('@ctrlb/heimdall');
-
-heimdall.start();
-
 
 const port = 8088;
 
@@ -28,7 +23,6 @@ const getMimeType = (ext) => {
     return types[ext.toLowerCase()] || "application/octet-stream";
 };
 
-// Load AWS credentials from environment variables for better security
 let region = process.env.AWS_REGION;
 let accessKey = process.env.AWS_ACCESS_KEY_ID;
 let secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
@@ -102,11 +96,22 @@ async function handleFileUpload(filedown) {
             });
         });
 
-        const pass = new PassThrough();
+        const localFilePath = `./local${fileExt}`;
+        const localFile = fs.createWriteStream(localFilePath);
+
+        response.pipe(localFile);
+
+        await new Promise((resolve, reject) => {
+            localFile.on('finish', resolve);
+            localFile.on('error', reject);
+        });
+
+        const localFileStream = fs.createReadStream(localFilePath);
+
         const uploadParams = {
             Bucket: s3_bucket,
             Key: `myfile${fileExt}`,
-            Body: pass,
+            Body: localFileStream,
             ContentType: mimeType
         };
 
@@ -114,8 +119,6 @@ async function handleFileUpload(filedown) {
             client: s3,
             params: uploadParams
         });
-
-        response.pipe(pass);
 
         await uploader.done;
 
